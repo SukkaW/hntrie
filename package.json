@@ -1,6 +1,6 @@
 {
   "name": "hntrie",
-  "version": "1.0.0",
+  "version": "1.0.0-beta.1",
   "description": "The extremely fast Trie implementation optimized for Hostname.",
   "repository": {
     "type": "git",
