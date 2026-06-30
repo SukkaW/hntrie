@@ -1,0 +1,48 @@
+{
+  "name": "hntrie",
+  "version": "1.0.0",
+  "description": "The extremely fast Trie implementation optimized for Hostname.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SukkaW/hntrie.git"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "lint": "eslint --format=sukka .",
+    "build": "bunchee --minify --no-sourcemap",
+    "bench": "SWC_NODE_IGNORE_DYNAMIC=1 node src/index.bench.ts",
+    "test": "SWC_NODE_IGNORE_DYNAMIC=1 SWC_NODE_INLINE_SOURCE_MAP=1 nyc mocha --require @swc-node/register --full-trace 'src/**/*.test.ts'",
+    "prerelease": "pnpm run lint && pnpm run test && pnpm run build",
+    "release": "bumpp --install -r --all --commit \"release: %s\" --tag \"%s\""
+  },
+  "keywords": [
+    "Trie",
+    "Hostname"
+  ],
+  "author": "SukkaW <https://skk.moe>",
+  "license": "MIT",
+  "devDependencies": {
+    "@swc/core": "^1.15.43",
+    "bumpp": "^10.4.1",
+    "bunchee": "^6.11.0",
+    "eslint": "^10.6.0",
+    "eslint-config-sukka": "^8.13.2",
+    "eslint-formatter-sukka": "^8.13.2",
+    "typescript": "^6.0.3"
+  },
+  "packageManager": "pnpm@11.9.0"
+}
