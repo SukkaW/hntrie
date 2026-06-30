@@ -152,13 +152,21 @@ export class HostnameSmolTrie {
   }
 
   find(prefix: string): string[] {
+    // a compacted node's key may join multiple labels (RADIX_SEP), so a prefix
+    // query can land mid-node — expand first so every node is one label deep,
+    // then restore compaction afterward so the caller's chosen state sticks
+    const wasCompacted = this._compacted;
+    this._expandIfCompacted();
     const isSubdomainQuery = prefix.codePointAt(0) === 46/* '.' */;
     const hostname = isSubdomainQuery ? prefix.slice(1) : prefix;
     const labels = splitHostname(hostname);
     const node = trieWalkFind(this._root, labels);
     const result: string[] = [];
 
-    if (!node) return result;
+    if (!node) {
+      if (wasCompacted) this.compact();
+      return result;
+    }
 
     if (isSubdomainQuery) {
       if (getBit(node.f, FLAG_SUBDOMAIN)) {
@@ -172,6 +180,8 @@ export class HostnameSmolTrie {
     } else {
       this._collectEntries(node, labels.slice(0, -1), result);
     }
+
+    if (wasCompacted) this.compact();
 
     return result;
   }

@@ -57,16 +57,19 @@ export function splitHostname(hostname: string): string[] {
 
 export function labelsToHostname(labels: string[]): string {
   const len = labels.length;
+  if (len === 1) {
+    // single-label "hostname" — the only label IS the TLD slot, decompress if needed
+    const tld = labels[0];
+    return ID_TO_TLD.get(tld) ?? tld;
+  }
   // last label in the stack is the leftmost subdomain, first is the TLD (possibly compressed)
   let result = labels[len - 1];
   for (let i = len - 2; i > 0; i--) {
     result += '.' + labels[i];
   }
-  if (len > 1) {
-    // first label is the TLD — decompress if needed
-    const tld = labels[0];
-    result += '.' + (ID_TO_TLD.get(tld) ?? tld);
-  }
+  // first label is the TLD — decompress if needed
+  const tld = labels[0];
+  result += '.' + (ID_TO_TLD.get(tld) ?? tld);
   return result;
 }
 

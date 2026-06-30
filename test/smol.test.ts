@@ -340,6 +340,23 @@ describe('SmolTrie', () => {
         'example.com'
       ]);
     });
+
+    it('should decompress a TLD-only entry instead of dumping its raw compressed ID', () => {
+      // regression test: a single-label hostname IS the TLD slot itself, so
+      // labelsToHostname must decompress labels[0] even when labels.length === 1
+      const trie = new HostnameSmolTrie();
+      trie.add('com');
+
+      expect(collectDump(trie)).toEqual(['com']);
+    });
+
+    it('should decompress a TLD-only entry after compaction', () => {
+      const trie = new HostnameSmolTrie();
+      trie.add('com');
+      trie.compact();
+
+      expect(collectDump(trie)).toEqual(['com']);
+    });
   });
 
   describe('TLD compression', () => {
@@ -675,6 +692,42 @@ describe('SmolTrie', () => {
       expect(trie.find('example.net')).toEqual([]);
       // dump confirms dedup: only .example.com + example.org survive
       expect(collectDump(trie)).toEqual(['.example.com', 'example.org']);
+    });
+
+    it('should find entries when the prefix lands inside a radix-compressed node', () => {
+      // regression test: compaction collapses 'deep.sub.example.com' into a single
+      // multi-label node, so a prefix query for 'sub.example.com' lands mid-node —
+      // find() must expand before walking, not rely on the compacted-mode walker
+      const trie = new HostnameSmolTrie();
+      trie.add('deep.sub.example.com');
+      trie.add('other.sub.example.com');
+      trie.compact();
+
+      expect(trie.find('sub.example.com')).toEqual(['deep.sub.example.com', 'other.sub.example.com']);
+    });
+
+    it('should restore compaction after find() on a compacted trie', () => {
+      // find() expands internally to walk mid-node prefixes, but must not leak
+      // that expansion back to the caller — compacted state should be unchanged
+      const trie = new HostnameSmolTrie();
+      trie.add('deep.sub.example.com');
+      trie.add('other.sub.example.com');
+      trie.compact();
+
+      trie.find('sub.example.com');
+      expect(trie.compacted).toEqual(true);
+      expect(trie.match('deep.sub.example.com')).toEqual(true);
+
+      // also true when the prefix isn't found at all
+      trie.find('no-match.org');
+      expect(trie.compacted).toEqual(true);
+    });
+
+    it('should leave an uncompacted trie uncompacted after find()', () => {
+      const trie = new HostnameSmolTrie();
+      trie.add('example.com');
+      trie.find('example.com');
+      expect(trie.compacted).toEqual(false);
     });
   });
 
