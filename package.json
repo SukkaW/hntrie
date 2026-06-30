@@ -37,7 +37,8 @@
   },
   "keywords": [
     "Trie",
-    "Hostname"
+    "Hostname",
+    "Radix Trie"
   ],
   "author": "SukkaW <https://skk.moe>",
   "license": "MIT",
