@@ -1,0 +1,35 @@
+// HostnameTrie serialization snapshot should match serialize snapshot for uncompacted trie 1
+
+"""
+hntrie:1
+0	0	0
+1	example	1	"v1"
+2	sub	0
+3	deep	1	"v7"
+0	2	0
+1	cdn	2		"v2"
+0	3	0
+1	test	1	"v3"
+0	t	0
+1	site	1	"v4"
+0	p	0
+1	blog	1	"v5"
+0	a	0
+1	api	2		"v6"
+0	unknown	0
+1	foo	1	"v8"
+"""
+
+// HostnameTrie serialization snapshot should match serialize snapshot for compacted trie 1
+
+"""
+hntrie:1
+0	0|example	1	"v1"
+1	sub|deep	1	"v7"
+0	2|cdn	2		"v2"
+0	3|test	1	"v3"
+0	t|site	1	"v4"
+0	p|blog	1	"v5"
+0	a|api	2		"v6"
+0	unknown|foo	1	"v8"
+"""

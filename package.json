@@ -19,6 +19,12 @@
       "require": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./smol": {
+      "types": "./dist/smol.d.ts",
+      "import": "./dist/smol.mjs",
+      "require": "./dist/smol.js",
+      "default": "./dist/smol.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -35,13 +41,22 @@
   ],
   "author": "SukkaW <https://skk.moe>",
   "license": "MIT",
+  "dependencies": {
+    "foxts": "^5.5.1"
+  },
   "devDependencies": {
+    "@istanbuljs/nyc-config-typescript": "^1.0.2",
+    "@swc-node/register": "^1.11.1",
     "@swc/core": "^1.15.43",
+    "@types/mocha": "^10.0.10",
     "bumpp": "^10.4.1",
     "bunchee": "^6.11.0",
+    "earl": "^2.0.0",
     "eslint": "^10.6.0",
     "eslint-config-sukka": "^8.13.2",
     "eslint-formatter-sukka": "^8.13.2",
+    "mocha": "^11.7.6",
+    "nyc": "^18.0.0",
     "typescript": "^6.0.3"
   },
   "packageManager": "pnpm@11.9.0"
