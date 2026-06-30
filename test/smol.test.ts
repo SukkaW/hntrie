@@ -1,6 +1,6 @@
 import { describe, it } from 'mocha';
 import { expect } from 'earl';
-import { HostnameSmolTrie } from './smol.ts';
+import { HostnameSmolTrie } from '../src/smol.ts';
 
 function collectDump(trie: HostnameSmolTrie): string[] {
   const result: string[] = [];

@@ -31,7 +31,7 @@
     "lint": "eslint --format=sukka .",
     "build": "bunchee --minify --no-sourcemap",
     "bench": "SWC_NODE_IGNORE_DYNAMIC=1 node src/index.bench.ts",
-    "test": "SWC_NODE_IGNORE_DYNAMIC=1 SWC_NODE_INLINE_SOURCE_MAP=1 nyc mocha --require @swc-node/register --full-trace 'src/**/*.test.ts'",
+    "test": "SWC_NODE_IGNORE_DYNAMIC=1 SWC_NODE_INLINE_SOURCE_MAP=1 nyc mocha --require @swc-node/register --full-trace 'test/**/*.test.ts'",
     "prerelease": "pnpm run lint && pnpm run test && pnpm run build",
     "release": "bumpp --install -r --all --commit \"release: %s\" --tag \"%s\""
   },
