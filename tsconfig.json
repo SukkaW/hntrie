@@ -4,6 +4,9 @@
     "lib": ["esnext"],
     "module": "preserve",
     "moduleResolution": "bundler",
+    "types": [
+      "node"
+    ],
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "declaration": true,

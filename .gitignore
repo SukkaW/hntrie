@@ -1,3 +1,6 @@
+# Downloaded benchmark data (fetched on demand, see src/index.bench.ts)
+.bench-data
+
 # Logs
 logs
 *.log
