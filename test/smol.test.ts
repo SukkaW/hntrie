@@ -1,5 +1,6 @@
 import { describe, it } from 'mocha';
 import { expect } from 'earl';
+import { HostnameTrie } from '../src/index.ts';
 import { HostnameSmolTrie } from '../src/smol.ts';
 
 function collectDump(trie: HostnameSmolTrie): string[] {
@@ -356,6 +357,100 @@ describe('SmolTrie', () => {
       trie.compact();
 
       expect(collectDump(trie)).toEqual(['com']);
+    });
+  });
+
+  describe('serializeTransferable / deserializeTransferable', () => {
+    it('should round-trip a simple trie via ArrayBuffer', () => {
+      const trie = new HostnameSmolTrie(['a.com', '.b.com', 'c.org']);
+
+      const buffer = trie.serializeTransferable();
+      expect(buffer).toBeA(ArrayBuffer);
+
+      const restored = HostnameSmolTrie.deserializeTransferable(buffer);
+
+      expect(restored.match('a.com')).toEqual(true);
+      expect(restored.match('foo.b.com')).toEqual(true);
+      expect(restored.match('c.org')).toEqual(true);
+      expect(restored.match('other.com')).toEqual(false);
+    });
+
+    it('should round-trip a compacted trie', () => {
+      const trie = new HostnameSmolTrie(['deep.sub.example.com', 'other.sub.example.com']);
+      trie.compact();
+
+      const buffer = trie.serializeTransferable();
+      const restored = HostnameSmolTrie.deserializeTransferable(buffer);
+
+      expect(restored.compacted).toEqual(true);
+      expect(restored.match('deep.sub.example.com')).toEqual(true);
+      expect(restored.match('other.sub.example.com')).toEqual(true);
+    });
+
+    it('should handle empty trie', () => {
+      const trie = new HostnameSmolTrie();
+      const buffer = trie.serializeTransferable();
+      const restored = HostnameSmolTrie.deserializeTransferable(buffer);
+      expect(restored.match('anything.com')).toEqual(false);
+    });
+
+    it('should preserve dedup across the round-trip', () => {
+      const trie = new HostnameSmolTrie(['.example.com', 'foo.example.com', 'bar.com']);
+      const buffer = trie.serializeTransferable();
+      const restored = HostnameSmolTrie.deserializeTransferable(buffer);
+
+      expect(collectDump(restored)).toEqual(['.example.com', 'bar.com']);
+    });
+
+    it('should survive actual buffer transfer (ownership moves, no clone)', () => {
+      // simulates worker.postMessage(buffer, [buffer]) — the source buffer is detached
+      const trie = new HostnameSmolTrie(['a.com']);
+
+      const buffer = trie.serializeTransferable();
+      const transferred = structuredClone(buffer, { transfer: [buffer] });
+
+      expect(buffer.byteLength).toEqual(0); // detached after transfer
+      const restored = HostnameSmolTrie.deserializeTransferable(transferred);
+      expect(restored.match('a.com')).toEqual(true);
+    });
+
+    it('should throw on invalid magic header', () => {
+      expect(() => HostnameSmolTrie.deserializeTransferable(new ArrayBuffer(2))).toThrow();
+      const badMagic = new Uint8Array([88, 89, 90]).buffer; // wrong magic bytes
+      expect(() => HostnameSmolTrie.deserializeTransferable(badMagic)).toThrow();
+    });
+
+    it('should reject the full trie binary format', () => {
+      const trie = new HostnameTrie(['example.com']);
+      expect(() => HostnameSmolTrie.deserializeTransferable(trie.serializeTransferable())).toThrow();
+    });
+
+    it('should reject records violating smol-only invariants', () => {
+      // smol nodes are never both exact and subdomain — the subdomain marker subsumes exact
+      const bothFlags = new Uint8Array([72, 78, 1, 2, 0, 3, 1, 97]).buffer;
+      expect(() => HostnameSmolTrie.deserializeTransferable(bothFlags)).toThrow();
+
+      // a subdomain node covers everything beneath it, so it must never carry children
+      const childUnderSubdomain = new Uint8Array([72, 78, 1, 2, 0, 2, 1, 97, 1, 1, 1, 98]).buffer;
+      expect(() => HostnameSmolTrie.deserializeTransferable(childUnderSubdomain)).toThrow();
+
+      // two sibling records at depth 0 sharing the same map key
+      const duplicateKey = new Uint8Array([72, 78, 1, 2, 0, 1, 1, 97, 0, 1, 1, 97]).buffer;
+      expect(() => HostnameSmolTrie.deserializeTransferable(duplicateKey)).toThrow();
+    });
+
+    it('should not truncate long keys or deep caller-supplied hostnames', () => {
+      const longKey = 'a'.repeat(300);
+      const deepLabels: string[] = [];
+      for (let i = 0; i < 260; i++) deepLabels.push(`label${i}`);
+      deepLabels.push('com');
+      const deepHostname = deepLabels.join('.');
+      const trie = new HostnameSmolTrie([longKey, deepHostname]);
+
+      const restored = HostnameSmolTrie.deserializeTransferable(trie.serializeTransferable());
+
+      expect(restored.match(longKey)).toEqual(true);
+      expect(restored.match(deepHostname)).toEqual(true);
     });
   });
 

@@ -1,6 +1,7 @@
 import { describe, it } from 'mocha';
 import { expect } from 'earl';
 import { HostnameTrie } from '../src/index.ts';
+import { HostnameSmolTrie } from '../src/smol.ts';
 
 function collectDump(trie: HostnameTrie): string[] {
   const result: string[] = [];
@@ -466,6 +467,169 @@ describe('HostnameTrie', () => {
       // Boolean true should not be serialized as JSON — just flags
       expect(serialized).not.toInclude('"true"');
       expect(serialized).not.toInclude('true');
+    });
+  });
+
+  describe('serializeTransferable / deserializeTransferable', () => {
+    it('should round-trip a simple trie via ArrayBuffer', () => {
+      const trie = new HostnameTrie();
+      trie.add('example.com');
+      trie.addSubdomain('google.com');
+      trie.add('blog.example.com');
+
+      const buffer = trie.serializeTransferable();
+      expect(buffer).toBeA(ArrayBuffer);
+
+      const restored = HostnameTrie.deserializeTransferable(buffer);
+
+      expect(restored.match('example.com')).toEqual(true);
+      expect(restored.match('www.google.com')).toEqual(true);
+      expect(restored.match('other.com')).toEqual(null);
+      expect(restored.size).toEqual(3);
+    });
+
+    it('should round-trip with custom values and serialization functions', () => {
+      const trie = new HostnameTrie<{ id: number, name: string }>();
+      trie.add('example.com', { id: 1, name: 'test' });
+
+      const buffer = trie.serializeTransferable(v => `${v.id}:${v.name}`);
+      const restored = HostnameTrie.deserializeTransferable<{ id: number, name: string }>(
+        buffer,
+        s => {
+          const [id, name] = s.split(':');
+          return { id: Number(id), name };
+        }
+      );
+
+      expect(restored.match('example.com')).toEqual({ id: 1, name: 'test' });
+    });
+
+    it('should distinguish an empty serialized value from the true sentinel', () => {
+      const trie = new HostnameTrie<string>();
+      trie.add('example.com', '');
+
+      const buffer = trie.serializeTransferable(value => value);
+      const restored = HostnameTrie.deserializeTransferable<string>(buffer, value => value);
+
+      expect(restored.match('example.com')).toEqual('');
+    });
+
+    it('should round-trip a compacted trie', () => {
+      const trie = new HostnameTrie();
+      trie.add('deep.sub.example.com');
+      trie.addSubdomain('other.com');
+      trie.compact();
+
+      const buffer = trie.serializeTransferable();
+      const restored = HostnameTrie.deserializeTransferable(buffer);
+
+      expect(restored.compacted).toEqual(true);
+      expect(restored.match('deep.sub.example.com')).toEqual(true);
+      expect(restored.match('www.other.com')).toEqual(true);
+    });
+
+    it('should handle empty trie', () => {
+      const trie = new HostnameTrie();
+      const buffer = trie.serializeTransferable();
+      const restored = HostnameTrie.deserializeTransferable(buffer);
+      expect(restored.size).toEqual(0);
+      expect(restored.match('anything.com')).toEqual(null);
+    });
+
+    it('should survive actual buffer transfer (ownership moves, no clone)', () => {
+      // simulates worker.postMessage(buffer, [buffer]) — the source buffer is detached
+      const trie = new HostnameTrie<string>();
+      trie.add('a.com', 'va');
+
+      const buffer = trie.serializeTransferable();
+      const transferred = structuredClone(buffer, { transfer: [buffer] });
+
+      expect(buffer.byteLength).toEqual(0); // detached after transfer
+      const restored = HostnameTrie.deserializeTransferable<string>(transferred);
+      expect(restored.match('a.com')).toEqual('va');
+    });
+
+    it('should throw on invalid magic header', () => {
+      expect(() => HostnameTrie.deserializeTransferable(new ArrayBuffer(2))).toThrow();
+      const badMagic = new Uint8Array([88, 89, 90]).buffer; // wrong magic bytes
+      expect(() => HostnameTrie.deserializeTransferable(badMagic)).toThrow();
+    });
+
+    it('should reject the smol binary format and malformed records', () => {
+      const smolBuffer = new HostnameSmolTrie(['example.com']).serializeTransferable();
+      expect(() => HostnameTrie.deserializeTransferable(smolBuffer)).toThrow();
+
+      // Valid full-trie header followed by a first node at depth 1 instead of 0.
+      const badDepth = new Uint8Array([72, 78, 1, 1, 1, 0, 1, 97]).buffer;
+      expect(() => HostnameTrie.deserializeTransferable(badDepth)).toThrow();
+
+      // Valid header and record prefix, but the declared one-byte key is missing.
+      const truncated = new Uint8Array([72, 78, 1, 1, 0, 0, 1]).buffer;
+      expect(() => HostnameTrie.deserializeTransferable(truncated)).toThrow();
+
+      // Flag byte carrying bits outside FLAG_EXACT | FLAG_SUBDOMAIN.
+      const badFlags = new Uint8Array([72, 78, 1, 1, 0, 0xFF, 1, 97]).buffer;
+      expect(() => HostnameTrie.deserializeTransferable(badFlags)).toThrow();
+
+      // Two sibling records at depth 0 sharing the same map key.
+      const duplicateKey = new Uint8Array([72, 78, 1, 1, 0, 0, 1, 97, 0, 0, 1, 97]).buffer;
+      expect(() => HostnameTrie.deserializeTransferable(duplicateKey)).toThrow();
+
+      // A key byte that is a bare UTF-8 continuation byte — the decoder is fatal.
+      const badUtf8 = new Uint8Array([72, 78, 1, 1, 0, 0, 1, 0x80]).buffer;
+      expect(() => HostnameTrie.deserializeTransferable(badUtf8)).toThrow();
+    });
+
+    it('should distinguish an empty-string value from the boolean true sentinel', () => {
+      // `true` is stored as a 0-length marker; an actual '' value must not collapse into it
+      const trie = new HostnameTrie<string>();
+      trie.add('empty.com', '');
+      trie.add('filled.com', 'v');
+
+      const restored = HostnameTrie.deserializeTransferable<string>(trie.serializeTransferable());
+
+      expect(restored.match('empty.com')).toEqual('');
+      expect(restored.match('filled.com')).toEqual('v');
+    });
+
+    it('should round-trip a node carrying both exact and subdomain values', () => {
+      const trie = new HostnameTrie<string>();
+      trie.add('example.com', 'exact');
+      trie.addSubdomain('example.com', 'sub');
+
+      const restored = HostnameTrie.deserializeTransferable<string>(trie.serializeTransferable());
+
+      expect(restored.match('example.com')).toEqual('exact');
+      expect(restored.match('www.example.com')).toEqual('sub');
+      expect(restored.size).toEqual(2);
+    });
+
+    it('should not truncate long keys or deep caller-supplied hostnames', () => {
+      const longKey = 'a'.repeat(300);
+      const deepLabels: string[] = [];
+      for (let i = 0; i < 260; i++) deepLabels.push(`label${i}`);
+      deepLabels.push('com');
+      const deepHostname = deepLabels.join('.');
+      const trie = new HostnameTrie<string>();
+      trie.add(longKey, 'long');
+      trie.add(deepHostname, 'deep');
+
+      const restored = HostnameTrie.deserializeTransferable<string>(trie.serializeTransferable());
+
+      expect(restored.match(longKey)).toEqual('long');
+      expect(restored.match(deepHostname)).toEqual('deep');
+    });
+
+    it('should pack tighter than the UTF-8 encoded text format', () => {
+      // packed binary: 1-byte key length + no field separators, vs. text's
+      // ASCII depth/flags digits + tab/newline separators per record
+      const trie = new HostnameTrie();
+      for (let i = 0; i < 100; i++) trie.add(`domain${i}.example.com`);
+
+      const textByteLength = new TextEncoder().encode(trie.serialize()).byteLength;
+      const binaryByteLength = trie.serializeTransferable().byteLength;
+
+      expect(binaryByteLength).toBeLessThan(textByteLength);
     });
   });
 

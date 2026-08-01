@@ -64,6 +64,19 @@ const serialized = trie.serialize();
 const restored = HostnameTrie.deserialize<string>(serialized);
 ```
 
+`serializeTransferable`/`deserializeTransferable` do the same round-trip but through a packed binary `ArrayBuffer` instead of a string — pass it to `postMessage(buffer, [buffer])` and ownership transfers to the worker with zero copy, instead of paying for a full structured-clone of the trie:
+
+```ts
+// main thread
+const buffer = trie.serializeTransferable();
+worker.postMessage(buffer, [buffer]);
+
+// inside the worker
+self.onmessage = (event) => {
+  const trie = HostnameTrie.deserializeTransferable<string>(event.data);
+};
+```
+
 Iterate entries directly, or stream them through a callback with `dump` (no intermediate array allocation, so entries can be pushed straight into whatever container is already on hand):
 
 ```ts
@@ -124,7 +137,7 @@ blocklist.match('bar.com');
 
 Whitelisting only removes an entry that exists as its own node — if `foo.example.com` is already covered by a broader `.example.com` subdomain entry, whitelist that broader entry instead.
 
-`HostnameSmolTrie` also supports `.compact()`, `.find(prefix)`, and `.dump()`/`HostnameSmolTrie.load()` for round-tripping, with the same semantics as `HostnameTrie` minus the stored values.
+`HostnameSmolTrie` also supports `.compact()`, `.find(prefix)`, `.dump()`/`HostnameSmolTrie.load()`, and `.serializeTransferable()`/`HostnameSmolTrie.deserializeTransferable()` for round-tripping, with the same semantics as `HostnameTrie` minus the stored values.
 
 ## License
 

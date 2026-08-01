@@ -2,7 +2,8 @@ import {
   walkHostname, splitHostname, labelsToHostname,
   RADIX_SEP,
   trieWalkFindH, trieWalkFind, trieWalkFindCompacted,
-  trieCompressNode, trieExpandNode, trieCleanup
+  trieCompressNode, trieExpandNode, trieCleanup, trieHasCompressedKeys,
+  ByteWriter, ByteReader, writeBinaryHeader, readBinaryHeader, BINARY_KIND_TRIE
 } from './_utils.ts';
 import { getBit, missingBit, setBit, deleteBit } from 'foxts/bitwise';
 import { fastStringArrayJoin } from 'foxts/fast-string-array-join';
@@ -34,16 +35,6 @@ function createNode<T>(key: string): TrieNode<T> {
 function copyTrieNodeTail<T>(tail: TrieNode<T>, original: TrieNode<T>): void {
   tail.e = original.e;
   tail.s = original.s;
-}
-
-function hasCompressedKeys<T>(node: TrieNode<T>): boolean {
-  if (node.k.includes(RADIX_SEP)) return true;
-  if (node.c !== null) {
-    for (const child of node.c.values()) {
-      if (hasCompressedKeys(child)) return true;
-    }
-  }
-  return false;
 }
 
 export class HostnameTrie<T = boolean> {
@@ -268,7 +259,7 @@ export class HostnameTrie<T = boolean> {
     }
 
     trie._size = size;
-    trie._compacted = hasCompressedKeys(trie._root);
+    trie._compacted = trieHasCompressedKeys(trie._root);
     return trie;
   }
 
@@ -283,6 +274,83 @@ export class HostnameTrie<T = boolean> {
   ): HostnameTrie<T> {
     // eslint-disable-next-line sukka/unicorn/class-reference-in-static-methods -- static factory
     return HostnameTrie.deserialize(data, valueFromString);
+  }
+
+  /**
+   * Packed binary encoding of the same tree `serialize()` produces, returned as an
+   * `ArrayBuffer` suitable for `postMessage(buffer, [buffer])` — ownership transfers
+   * with no structured-clone copy, and no ASCII/separator overhead per field.
+   */
+  serializeTransferable(valueToString?: (value: T) => string): ArrayBuffer {
+    const writer = new ByteWriter();
+    writeBinaryHeader(writer, BINARY_KIND_TRIE);
+    this._serializeNodeBinary(this._root, writer, valueToString, -1);
+    return writer.toArrayBuffer();
+  }
+
+  static deserializeTransferable<T = boolean>(
+    this: void,
+    buffer: ArrayBuffer,
+    valueFromString?: (s: string) => T
+  ): HostnameTrie<T> {
+    const trie = new HostnameTrie<T>();
+    const reader = new ByteReader(buffer);
+    readBinaryHeader(reader, BINARY_KIND_TRIE);
+
+    let size = 0;
+    const stack: Array<[TrieNode<T>, number]> = [[trie._root, -1]];
+
+    while (!reader.done) {
+      const depth = reader.readVarint();
+      const flags = reader.readU8();
+
+      if ((flags & ~(FLAG_EXACT | FLAG_SUBDOMAIN)) !== 0) {
+        throw new TypeError('Invalid flags in hntrie binary serialization');
+      }
+
+      const key = reader.readKeyString();
+
+      while (stack.length > 1 && stack[stack.length - 1][1] >= depth) {
+        stack.pop();
+      }
+
+      const [parent, parentDepth] = stack[stack.length - 1];
+      if (parentDepth !== depth - 1) {
+        throw new TypeError('Invalid node depth in hntrie binary serialization');
+      }
+
+      const mapKey = key.includes(RADIX_SEP) ? key.slice(0, key.indexOf(RADIX_SEP)) : key;
+      if (parent.c?.has(mapKey)) {
+        throw new TypeError('Duplicate node key in hntrie binary serialization');
+      }
+
+      const node = createNode<T>(key);
+      node.f = flags;
+
+      if (getBit(flags, FLAG_EXACT)) {
+        const eStr = reader.readValueString();
+        node.e = eStr === null
+          ? true as T
+          : (valueFromString ? valueFromString(eStr) : JSON.parse(eStr) as T);
+        size++;
+      }
+      if (getBit(flags, FLAG_SUBDOMAIN)) {
+        const sStr = reader.readValueString();
+        node.s = sStr === null
+          ? true as T
+          : (valueFromString ? valueFromString(sStr) : JSON.parse(sStr) as T);
+        size++;
+      }
+
+      if (parent.c === null) parent.c = new Map();
+      parent.c.set(mapKey, node);
+
+      stack.push([node, depth]);
+    }
+
+    trie._size = size;
+    trie._compacted = trieHasCompressedKeys(trie._root);
+    return trie;
   }
 
   // ─── Iteration ─────────────────────────────────────────────────────
@@ -395,6 +463,41 @@ export class HostnameTrie<T = boolean> {
     if (node.c !== null) {
       for (const child of node.c.values()) {
         this._serializeNode(child, lines, valueToString, depth + 1);
+      }
+    }
+  }
+
+  /** @internal */
+  private _serializeNodeBinary(
+    node: TrieNode<T>,
+    writer: ByteWriter,
+    valueToString: ((value: T) => string) | undefined,
+    depth: number
+  ): void {
+    if (depth >= 0) {
+      writer.writeVarint(depth);
+      writer.writeU8(node.f);
+      writer.writeKeyString(node.k);
+
+      if (getBit(node.f, FLAG_EXACT)) {
+        writer.writeValueString(
+          (node.e as unknown) === true
+            ? null
+            : (valueToString ? valueToString(node.e!) : JSON.stringify(node.e))
+        );
+      }
+      if (getBit(node.f, FLAG_SUBDOMAIN)) {
+        writer.writeValueString(
+          (node.s as unknown) === true
+            ? null
+            : (valueToString ? valueToString(node.s!) : JSON.stringify(node.s))
+        );
+      }
+    }
+
+    if (node.c !== null) {
+      for (const child of node.c.values()) {
+        this._serializeNodeBinary(child, writer, valueToString, depth + 1);
       }
     }
   }

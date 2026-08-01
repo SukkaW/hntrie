@@ -2,7 +2,8 @@ import {
   walkHostname, splitHostname, labelsToHostname,
   RADIX_SEP,
   trieWalkFindH, trieWalkFind, trieWalkFindCompacted,
-  trieCompressNode, trieExpandNode, trieCleanup
+  trieCompressNode, trieExpandNode, trieCleanup, trieHasCompressedKeys,
+  ByteWriter, ByteReader, writeBinaryHeader, readBinaryHeader, BINARY_KIND_SMOL
 } from './_utils.ts';
 import { getBit, missingBit, setBit, deleteBit } from 'foxts/bitwise';
 import { noop } from 'foxts/noop';
@@ -215,6 +216,62 @@ export class HostnameSmolTrie {
     return trie;
   }
 
+  /**
+   * Packed binary encoding of the trie (same tree shape `dump()` walks), returned as
+   * an `ArrayBuffer` suitable for `postMessage(buffer, [buffer])` — ownership transfers
+   * with no structured-clone copy, and no ASCII/separator overhead per field.
+   */
+  serializeTransferable(): ArrayBuffer {
+    const writer = new ByteWriter();
+    writeBinaryHeader(writer, BINARY_KIND_SMOL);
+    this._serializeNodeBinary(this._root, writer, -1);
+    return writer.toArrayBuffer();
+  }
+
+  static deserializeTransferable(this: void, buffer: ArrayBuffer): HostnameSmolTrie {
+    const trie = new HostnameSmolTrie();
+    const reader = new ByteReader(buffer);
+    readBinaryHeader(reader, BINARY_KIND_SMOL);
+
+    const stack: Array<[SmolNode, number]> = [[trie._root, -1]];
+
+    while (!reader.done) {
+      const depth = reader.readVarint();
+      const flags = reader.readU8();
+
+      if ((flags & ~(FLAG_EXACT | FLAG_SUBDOMAIN)) !== 0 || flags === (FLAG_EXACT | FLAG_SUBDOMAIN)) {
+        throw new TypeError('Invalid flags in hntrie binary serialization');
+      }
+
+      const key = reader.readKeyString();
+
+      while (stack.length > 1 && stack[stack.length - 1][1] >= depth) {
+        stack.pop();
+      }
+
+      const [parent, parentDepth] = stack[stack.length - 1];
+      if (parentDepth !== depth - 1 || getBit(parent.f, FLAG_SUBDOMAIN)) {
+        throw new TypeError('Invalid node depth in hntrie binary serialization');
+      }
+
+      const mapKey = key.includes(RADIX_SEP) ? key.slice(0, key.indexOf(RADIX_SEP)) : key;
+      if (parent.c?.has(mapKey)) {
+        throw new TypeError('Duplicate node key in hntrie binary serialization');
+      }
+
+      const node = createNode(key);
+      node.f = flags;
+
+      if (parent.c === null) parent.c = new Map();
+      parent.c.set(mapKey, node);
+
+      stack.push([node, depth]);
+    }
+
+    trie._compacted = trieHasCompressedKeys(trie._root);
+    return trie;
+  }
+
   // ─── Internals ─────────────────────────────────────────────────────
 
   /** @internal */
@@ -333,6 +390,21 @@ export class HostnameSmolTrie {
 
     for (let i = 0; i < partsLen; i++) {
       labelStack.pop();
+    }
+  }
+
+  /** @internal */
+  private _serializeNodeBinary(node: SmolNode, writer: ByteWriter, depth: number): void {
+    if (depth >= 0) {
+      writer.writeVarint(depth);
+      writer.writeU8(node.f);
+      writer.writeKeyString(node.k);
+    }
+
+    if (node.c !== null) {
+      for (const child of node.c.values()) {
+        this._serializeNodeBinary(child, writer, depth + 1);
+      }
     }
   }
 }

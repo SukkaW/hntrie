@@ -142,5 +142,32 @@ async function loadPublicSuffixList(): Promise<string[]> {
     });
   });
 
+  summary(() => {
+    group('serialize() vs serializeTransferable() — entire Public Suffix List', () => {
+      bench('HostnameTrie: serialize() (text)', () => {
+        do_not_optimize(prebuiltTrie.serialize());
+      });
+
+      bench('HostnameTrie: serializeTransferable() (packed binary)', () => {
+        do_not_optimize(prebuiltTrie.serializeTransferable());
+      });
+
+      bench('HostnameSmolTrie: serializeTransferable() (packed binary)', () => {
+        do_not_optimize(prebuiltSmolTrie.serializeTransferable());
+      });
+    });
+  });
+
+  const textByteLength = new TextEncoder().encode(prebuiltTrie.serialize()).byteLength;
+  const binaryByteLength = prebuiltTrie.serializeTransferable().byteLength;
+  const smolBinaryByteLength = prebuiltSmolTrie.serializeTransferable().byteLength;
+  // eslint-disable-next-line no-console -- bench script summary output
+  console.log(
+    `\nserialize() (UTF-8 text): ${textByteLength.toLocaleString()} bytes`
+    + `\nserializeTransferable() (HostnameTrie, packed binary): ${binaryByteLength.toLocaleString()} bytes`
+    + ` (${((1 - binaryByteLength / textByteLength) * 100).toFixed(1)}% smaller than text)`
+    + `\nserializeTransferable() (HostnameSmolTrie, packed binary): ${smolBinaryByteLength.toLocaleString()} bytes\n`
+  );
+
   await run();
 })();
