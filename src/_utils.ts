@@ -1,3 +1,4 @@
+/* eslint-disable sukka/prefer-foxts-bitwise -- edge cases */
 import { TLD_TO_ID, ID_TO_TLD } from './_tlds.ts';
 
 const CHAR_DOT = 46;
@@ -167,8 +168,10 @@ export function trieExpandNode<N extends BaseNode>(
 ): void {
   if (node.c === null) return;
 
+  // snapshot: the loop reassigns entries of node.c as it expands them
   const entries = [...node.c];
-  for (const [ck, child] of entries) {
+  for (let e = 0, entriesLen = entries.length; e < entriesLen; e++) {
+    const [ck, child] = entries[e];
     const typedChild = child as N;
     const parts = typedChild.k.split(RADIX_SEP);
     const partsLen = parts.length;
@@ -202,7 +205,8 @@ export function trieCleanup<N extends BaseNode>(root: N, labels: string[]): void
   const path: N[] = [root];
   let current: N = root;
 
-  for (const label of labels) {
+  for (let i = 0, len = labels.length; i < len; i++) {
+    const label = labels[i];
     const child = current.c?.get(label) as N | undefined;
     if (!child) return;
     path.push(child);

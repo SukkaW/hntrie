@@ -414,7 +414,7 @@ describe('HostnameTrie', () => {
       const restored = HostnameTrie.deserialize<{ id: number, name: string }>(
         serialized,
         s => {
-          const [id, name] = s.split(':');
+          const [id, name] = s.split(':', 2);
           return { id: Number(id), name };
         }
       );
@@ -496,7 +496,7 @@ describe('HostnameTrie', () => {
       const restored = HostnameTrie.deserializeTransferable<{ id: number, name: string }>(
         buffer,
         s => {
-          const [id, name] = s.split(':');
+          const [id, name] = s.split(':', 2);
           return { id: Number(id), name };
         }
       );

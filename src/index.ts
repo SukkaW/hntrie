@@ -1,3 +1,4 @@
+/* eslint-disable sukka/prefer-foxts-bitwise -- edge cases */
 import {
   walkHostname, splitHostname, labelsToHostname,
   RADIX_SEP,
@@ -272,7 +273,6 @@ export class HostnameTrie<T = boolean> {
     data: string,
     valueFromString?: (s: string) => T
   ): HostnameTrie<T> {
-    // eslint-disable-next-line sukka/unicorn/class-reference-in-static-methods -- static factory
     return HostnameTrie.deserialize(data, valueFromString);
   }
 

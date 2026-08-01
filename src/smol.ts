@@ -1,3 +1,4 @@
+/* eslint-disable sukka/prefer-foxts-bitwise -- edge cases */
 import {
   walkHostname, splitHostname, labelsToHostname,
   RADIX_SEP,

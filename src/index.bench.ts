@@ -19,8 +19,9 @@ async function loadPublicSuffixList(): Promise<string[]> {
   const raw = readFileSync(DATA_FILE, 'utf-8');
   const hostnames: string[] = [];
 
-  for (const line of raw.split('\n')) {
-    const trimmed = line.trim();
+  const lines = raw.split('\n');
+  for (let i = 0, len = lines.length; i < len; i++) {
+    const trimmed = lines[i].trim();
     if (trimmed === '' || trimmed.startsWith('//')) continue;
 
     // wildcard ("*.foo") and exception ("!foo") markers — strip to plain hostnames
@@ -53,7 +54,7 @@ async function loadPublicSuffixList(): Promise<string[]> {
   const sampleSize = Math.min(2000, hostnames.length);
   const step = Math.max(1, Math.floor(hostnames.length / sampleSize));
   const lookupSampleHits: string[] = [];
-  for (let i = 0; i < hostnames.length; i += step) lookupSampleHits.push(hostnames[i]);
+  for (let i = 0, len = hostnames.length; i < len; i += step) lookupSampleHits.push(hostnames[i]);
   const lookupSampleMisses = lookupSampleHits.map(h => `not-present-${h}`);
 
   summary(() => {
@@ -71,19 +72,19 @@ async function loadPublicSuffixList(): Promise<string[]> {
   summary(() => {
     group('lookup: match() — hits', () => {
       bench('HostnameTrie (uncompacted)', () => {
-        for (const h of lookupSampleHits) do_not_optimize(prebuiltTrie.match(h));
+        for (let i = 0, len = lookupSampleHits.length; i < len; i++) { const h = lookupSampleHits[i]; do_not_optimize(prebuiltTrie.match(h)); }
       });
 
       bench('HostnameTrie (compacted)', () => {
-        for (const h of lookupSampleHits) do_not_optimize(prebuiltCompactedTrie.match(h));
+        for (let i = 0, len = lookupSampleHits.length; i < len; i++) { const h = lookupSampleHits[i]; do_not_optimize(prebuiltCompactedTrie.match(h)); }
       });
 
       bench('HostnameSmolTrie (uncompacted)', () => {
-        for (const h of lookupSampleHits) do_not_optimize(prebuiltSmolTrie.match(h));
+        for (let i = 0, len = lookupSampleHits.length; i < len; i++) { const h = lookupSampleHits[i]; do_not_optimize(prebuiltSmolTrie.match(h)); }
       });
 
       bench('HostnameSmolTrie (compacted)', () => {
-        for (const h of lookupSampleHits) do_not_optimize(prebuiltCompactedSmolTrie.match(h));
+        for (let i = 0, len = lookupSampleHits.length; i < len; i++) { const h = lookupSampleHits[i]; do_not_optimize(prebuiltCompactedSmolTrie.match(h)); }
       });
     });
   });
@@ -91,19 +92,19 @@ async function loadPublicSuffixList(): Promise<string[]> {
   summary(() => {
     group('lookup: match() — misses', () => {
       bench('HostnameTrie (uncompacted)', () => {
-        for (const h of lookupSampleMisses) do_not_optimize(prebuiltTrie.match(h));
+        for (let i = 0, len = lookupSampleMisses.length; i < len; i++) { const h = lookupSampleMisses[i]; do_not_optimize(prebuiltTrie.match(h)); }
       });
 
       bench('HostnameTrie (compacted)', () => {
-        for (const h of lookupSampleMisses) do_not_optimize(prebuiltCompactedTrie.match(h));
+        for (let i = 0, len = lookupSampleMisses.length; i < len; i++) { const h = lookupSampleMisses[i]; do_not_optimize(prebuiltCompactedTrie.match(h)); }
       });
 
       bench('HostnameSmolTrie (uncompacted)', () => {
-        for (const h of lookupSampleMisses) do_not_optimize(prebuiltSmolTrie.match(h));
+        for (let i = 0, len = lookupSampleMisses.length; i < len; i++) { const h = lookupSampleMisses[i]; do_not_optimize(prebuiltSmolTrie.match(h)); }
       });
 
       bench('HostnameSmolTrie (compacted)', () => {
-        for (const h of lookupSampleMisses) do_not_optimize(prebuiltCompactedSmolTrie.match(h));
+        for (let i = 0, len = lookupSampleMisses.length; i < len; i++) { const h = lookupSampleMisses[i]; do_not_optimize(prebuiltCompactedSmolTrie.match(h)); }
       });
     });
   });
